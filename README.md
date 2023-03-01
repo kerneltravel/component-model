@@ -1,28 +1,24 @@
-# Component Model design and specification
-
-This repository describes the high-level [goals], [use cases], [design choices]
-and [FAQ] of the component model as well as a more-detailed [explainer], [IDL],
-[binary format] and [ABI] covering the initial Minimum Viable Product (MVP)
-release.
-
-In the future, this repository will additionally contain a [formal spec],
-reference interpreter and test suite.
-
-## Contributing
-
-All Component Model work is done as part of the [W3C WebAssembly Community Group].
-To contribute to any of these repositories, see the Community Group's
-[Contributing Guidelines].
+# 组件模型设计和规范 
 
 
-[goals]: design/high-level/Goals.md
-[use cases]: design/high-level/UseCases.md
-[design choices]: design/high-level/Choices.md
-[FAQ]: design/high-level/FAQ.md
-[explainer]: design/mvp/Explainer.md
-[IDL]: design/mvp/WIT.md
-[binary format]: design/mvp/Binary.md
-[ABI]: design/mvp/CanonicalABI.md
-[formal spec]: spec/
-[W3C WebAssembly Community Group]: https://www.w3.org/community/webassembly/
-[Contributing Guidelines]: https://webassembly.org/community/contributing/
+该存储库描述了组件模型的高级 [目标]、[用例]、[设计选择] 和 [FAQ]，以及涵盖初始最小可行产品 （MVP） 版本的更详细的 [解释器]、[IDL]、[二进制格式] 和 [ABI]。  
+
+将来，该存储库还将包含一个[正式规范]，参考解释器和测试套件。
+
+## 贡献
+
+所有组件模型工作是作为 [W3C WebAssembly社区群组] 的一部分完成的。  
+
+要为这些仓库中的任何一个做出贡献，请参阅社区组的 [贡献指南]。  
+
+[目标]: design/high-level/Goals.md  
+[用例]: design/high-level/UseCases.md  
+[设计选择]: design/high-level/Choices.md  
+[FAQ]: design/high-level/FAQ.md  
+[解释器]: design/mvp/Explainer.md  
+[IDL]: design/mvp/WIT.md  
+[二进制格式]: design/mvp/Binary.md  
+[ABI]: design/mvp/CanonicalABI.md  
+[正式规范]: spec/  
+[W3C WebAssembly社区群组]: https://www.w3.org/community/webassembly/  
+[贡献指南]: https://webassembly.org/community/contributing/
