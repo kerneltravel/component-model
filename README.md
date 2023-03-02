@@ -1,7 +1,7 @@
 # 组件模型设计和规范 
 
 
-该存储库描述了组件模型的高级 [目标]、[用例]、[设计选择] 和 [FAQ]，以及涵盖初始最小可行产品 （MVP） 版本的更详细的 [解释器]、[IDL]、[二进制格式] 和 [ABI]。  
+该存储库描述了组件模型的高级 [目标]、[应用场景]、[设计选择] 和 [FAQ]，以及涵盖初始最小可行产品 （MVP） 版本的更详细的 [解释器]、[IDL]、[二进制格式] 和 [ABI]。  
 
 将来，该存储库还将包含一个[正式规范]，参考解释器和测试套件。
 
@@ -12,7 +12,7 @@
 要为这些仓库中的任何一个做出贡献，请参阅社区组的 [贡献指南]。  
 
 [目标]: design/high-level/Goals.md  
-[用例]: design/high-level/UseCases.md  
+[应用场景]: design/high-level/UseCases.md  
 [设计选择]: design/high-level/Choices.md  
 [FAQ]: design/high-level/FAQ.md  
 [解释器]: design/mvp/Explainer.md  
