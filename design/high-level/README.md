@@ -1,5 +1,6 @@
 # Component Model High-Level Design Documents
 
-This directory contains design documents describing the component model's
-[goals](Goals.md), [use cases](UseCases.md), [design choices](Choices.md)
-and [FAQ](FAQ.md).
+# 组件模型高级设计文档
+
+该目录包含描述组件模型的[目标](Goals.md)、[用例](UseCases.md)、[设计选择](Choices.md)和[常见问题解答](FAQ.md)的设计文档。
+

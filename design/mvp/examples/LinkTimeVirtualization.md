@@ -1,18 +1,13 @@
-# Link-time Virtualization
+# 链接时虚拟化
 
-The idea with **link-time virtualization** use cases is to take the static
-dependency graph on the left (where all 3 components import the
-`wasi:filesystem` interface) and produce the runtime instance graph on the
-right, where the `parent` instance has created a `virtualized` instance and
-supplied it to a new `child` instance as the `wasi:filesystem` implementation.
+**链接时虚拟化** 的用例是将左侧的静态依赖图（其中所有3个组件都导入了 `wasi:filesystem` 接口）转换为右侧的运行时实例图，其中 `parent` 实例已创建了一个 `virtualized` 实例并将其提供给新的 `child` 实例作为 `wasi:filesystem` 实现。
 
 <p align="center"><img src="./images/link-time-virtualization.svg" width="500"></p>
 
-Importantly, the `child` instance has no access to the `wasi:filesystem`
-instance imported by the `parent` instance.
+重要的是，`child` 实例无法访问由 `parent` 实例导入的 `wasi:filesystem` 实例。
 
-We start with the `child.wat` that has been written and compiled separately,
-without regard to `parent.wasm`:
+我们从已经单独编写和编译的 `child.wat` 开始，而不考虑 `parent.wasm`：
+
 ```wasm
 ;; child.wat
 (component
@@ -24,9 +19,8 @@ without regard to `parent.wasm`:
 )
 ```
 
-We want to write a parent component that reuses the child component, giving the
-child component a virtual filesystem. This virtual filesystem can be factored
-out and reused as a separate component:
+我们想编写一个父组件，重用子组件，为子组件提供虚拟文件系统。这个虚拟文件系统可以被分解并作为一个单独的组件重用：
+
 ```wasm
 ;; virtualize.wat
 (component
@@ -43,8 +37,8 @@ out and reused as a separate component:
 )
 ```
 
-We now write the parent component by composing `child.wasm` with
-`virtualize.wasm`:
+
+我们现在通过将`child.wasm`与`virtualize.wasm`组合来编写父组件：
 ```wasm
 ;; parent.wat
 (component
@@ -59,9 +53,7 @@ We now write the parent component by composing `child.wasm` with
   ))
 )
 ```
-Here we import the `child` and `virtualize` components, but they could also be
-trivially copied in-line into the `parent` component using nested component
-definitions in place of imports:
+在这里，我们导入了`child`和`virtualize`组件，但它们也可以通过在父组件中使用嵌套组件定义来轻松地复制到`parent`组件中：
 ```wasm
 ;; parent.wat
 (component

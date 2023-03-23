@@ -1,38 +1,18 @@
-# Shared-Everything Dynamic Linking
+#共享一切的动态链接
 
-*Shared-everything dynamic linking* refers to the ability to create a component
-out of multiple Core WebAssembly modules so that common modules can be shared
-with other components. This provides an alternative to *static linking* which
-forces common code to be copied into each component. This type of linking
-should be able to leverage of existing support for native dynamic linking (of
-`.dll`s or `.so`s) which a single shared linear memory (hence
-*shared-everything* dynamic linking).
+*共享一切动态链接* 是指能够将多个Core WebAssembly模块组合成一个组件，以便可以与其他组件共享公共模块。这提供了一种替代*静态链接*的方法，后者强制将公共代码复制到每个组件中。这种类型的链接应该能够利用现有的本地动态链接支持（`.dll`或`.so`），其中有一个单独的共享线性内存（因此是*共享一切*动态链接）。
 
-Shared-everything dynamic linking should be *complementary* to the
-shared-nothing dynamic linking of components described in the
-[explainer](../Explainer.md). In particular, dynamically-linked modules must not
-share linear memory across component instance boundaries. For example, we want
-the static dependency graph on the left to produce the runtime instance graph
-on the right: create the runtime instance graph on the right:
+共享一切动态链接应该是组件中描述的共享无内容动态链接的*补充*。特别是，动态链接模块不能跨组件实例边界共享线性内存。例如，我们希望左侧的静态依赖图在右侧生成运行时实例图：在右侧创建运行时实例图：
+
 
 <p align="center"><img src="./images/shared-everything-dynamic-linking.svg" width="600"></p>
 
-Here, `libc` defines and exports a linear memory that is imported by the other
-moudle instances contained within the same component instance. Thus, at
-runtime, the composite application creates *three* instances of the `libc`
-module (creating *three* linear memories) yet contains only *one* copy of the
-`libc` code. This use case is tricky to implement in many module systems where
-sharing module code implies sharing module instance state.
+在这里，`libc`定义并导出了一个线性内存，该内存由同一组件实例中包含的其他模块实例导入。因此，在运行时，复合应用程序创建了`libc`模块的*三个*实例（创建了*三个*线性内存），但仅包含`libc`代码的*一个*副本。在许多模块系统中实现此用例很棘手，其中共享模块代码意味着共享模块实例状态。
 
 
 ## `libc`
 
-As with native dynamic linking, shared-everything dynamic linking requires
-toolchain conventions that are followed by all the toolchains producing the
-participating modules. Here, as in most conventions, `libc` serves a special
-role and is assumed to be bundled with the compiler. As part of this special
-role, `libc` defines and exports linear memory, with the convention that
-every other module imports memory from `libc`:
+与本地动态链接一样，共享一切的动态链接需要所有生成参与模块的工具链遵循的工具链约定。在这里，与大多数约定一样，libc扮演着特殊的角色，并且假定与编译器捆绑在一起。作为这个特殊角色的一部分，libc定义并导出线性内存，并约定每个其他模块从libc导入内存：
 ```wasm
 ;; libc.wat
 (module
@@ -42,20 +22,14 @@ every other module imports memory from `libc`:
 )
 ```
 
-Our compiler will also bundle standard library headers which contain
-declarations compatible with `libc`. First, though, we first need some helper
-macros, which we'll place in `stddef.h`:
+我们的编译器还将捆绑包含与`libc`兼容的声明的标准库头文件。不过，我们首先需要一些帮助器宏，我们将把它们放在`stddef.h`中：
 ```c
 /* stddef.h */
 #define WASM_IMPORT(module,name) __attribute__((import_module(#module), import_name(#name))) name
 #define WASM_EXPORT(name) __attribute__((export_name(#name))) name
 ```
 
-These macros use the clang-specific attributes [`import_module`], [`import_name`]
-and [`export_name`] to ensure that the annotated C functions produce the
-correct wasm import or export definitions. Other compilers would use their own
-magic syntax to achieve the same effect. Using these macros, we can declare
-`malloc` in `stdlib.h`:
+这些宏使用clang特定的属性[`import_module`]，[`import_name`]和[`export_name`]来确保注释的C函数产生正确的wasm导入或导出定义。其他编译器将使用自己的魔法语法来实现相同的效果。使用这些宏，我们可以在`stdlib.h`中声明`malloc`：
 ```c
 /* stdlib.h */
 #include <stddef.h>
@@ -63,8 +37,7 @@ magic syntax to achieve the same effect. Using these macros, we can declare
 void* LIBC(malloc)(size_t n);
 ```
 
-With these annotations, C programs that include and call this function will be
-compiled to contain the following import:
+有了这些注解，包含并调用这个函数的C程序将被编译为包含以下导入：
 ```wasm
 (import "libc" "malloc" (func (param i32) (result i32)))
 ```
@@ -72,14 +45,14 @@ compiled to contain the following import:
 
 ## `libzip`
 
-The interface exposed by `libzip` to its clients is a header file:
+`libzip`暴露给客户端的接口是一个头文件：
 ```c
 /* libzip.h */
 #include <stddef.h>
 #define LIBZIP(name) WASM_IMPORT(libzip, name)
 void* LIBZIP(zip)(void* in, size_t in_size, size_t* out_size);
 ```
-which can be implemented by the following source file:
+可以通过以下源文件实现：
 ```c
 /* libzip.c */
 #include <stdlib.h>
@@ -90,11 +63,7 @@ void* WASM_EXPORT(zip)(void* in, size_t in_size, size_t* out_size) {
 }
 ```
 
-Note that `libzip.h` annotates the `zip` declaration with an *import* attribute
-so that client modules generate proper wasm *import definitions* while `libzip.c`
-annotates the `zip` definition with an *export* attribute so that this function
-generates a proper *export definition* in the compiled module. Compiling with
-`clang -shared libzip.c` produces a module shaped like:
+请注意，`libzip.h`使用*import*属性注释`zip`声明，以便客户端模块生成正确的wasm*import定义*，而`libzip.c`使用*export*属性注释`zip`定义，以便此函数在编译模块时生成正确的*export定义*。使用`clang -shared libzip.c`编译会产生一个形状如下的模块：
 ```wasm
 ;; libzip.wat
 (module
@@ -109,8 +78,7 @@ generates a proper *export definition* in the compiled module. Compiling with
 
 ## `zipper`
 
-The main module of the `zipper` component is implemented by the following
-source file:
+`zipper`组件的主模块是由以下内容实现的源文件：
 ```c
 /* zipper.c */
 #include <stdlib.h>
@@ -124,8 +92,7 @@ int main(int argc, char* argv[]) {
 }
 ```
 
-When compiled by a (future) component-aware `clang`, the resulting component
-would look like:
+当被一个（未来的）组件识别的 "clang "编译时，产生的组件会看起来像这样：
 ```wasm
 ;; zipper.wat
 (component
@@ -164,14 +131,12 @@ would look like:
   (export "zip" (func $zip))
 )
 ```
-Here, `zipper` links its own private module code (`$Main`) with the shareable
-`libc` and `libzip` module code, ensuring that each new instance of `zipper`
-gets a fresh, private instance of `libc` and `libzip`.
+在这里，`zipper`将其自己的私有模块代码(`$Main`)与可共享的`libc`和`libzip`模块代码链接起来，确保每个新的`zipper`实例都获得一个新的、私有的`libc`和`libzip`实例。
 
 
 ## `libimg`
 
-Next we create a shared module `libimg` that depends on `libzip`:
+接下来我们创建一个共享模块`libimg`，它依赖于`libzip`：
 ```c
 /* libimg.h */
 #include <stddef.h>
@@ -188,7 +153,7 @@ void* WASM_EXPORT(compress)(void* in, size_t in_size, size_t* out_size) {
   ...
 }
 ```
-Compiling with `clang -shared libimg.c` produces a `libimg` module:
+用`clang -shared libimg.c`进行编译，产生一个`libimg`模块：
 ```wat
 ;; libimg.wat
 (module
@@ -204,9 +169,7 @@ Compiling with `clang -shared libimg.c` produces a `libimg` module:
 
 ## `imgmgk`
 
-The main module of the `imgmgk` component is implemented by including
-`stddef.h`, `libzip.h` and `libimg.h`. When compiled by a (future)
-component-aware `clang`, the resulting component would look like:
+`imgmgk`组件的主要模块是由以下部分实现的`stddef.h`, `libzip.h` 和 `libimg.h`。当被一个（未来的）组件识别的"clang "编译时，得到的组件将看起来像：
 ```wasm
 ;; imgmgk.wat
 (component $Imgmgk
@@ -243,14 +206,12 @@ component-aware `clang`, the resulting component would look like:
   (export "transform" (func $transform))
 )
 ```
-Here, we see the general pattern emerging of the dependency DAG between
-dynamically-linked modules expressed through `instance` definitions.
+在这里，我们看到了通过 "实例 "定义表达的动态链接的模块之间的依赖DAG的一般模式出现。通过 "实例 "定义表达的动态链接的模块之间的依赖DAG。
 
 
 ## `app`
 
-Finally, we can create the `app` component by composing the `zipper` and `imgmgk`
-components. The resulting component could look like:
+最后，我们可以通过组合`zipper`和`imgmgk`来创建`app`组件。由此产生的组件可以看起来像这样：
 ```wasm
 ;; app.wat
 (component
@@ -303,28 +264,20 @@ components. The resulting component could look like:
   (export "run" (func $run))
 )
 ```
-Note here that `$Libc` is passed to the nested `zipper` and `imgmgk` instances
-as an (uninstantiated) module before `app` creates its own private instance
-of `libc` linked with its private `$Main` module instance. Thus, the three
-components share `libc` *code* without sharing `libc` *state*, realizing the
-instance diagram at the beginning.
+请注意，`$Libc`被传递给嵌套的`zipper`和`imgmgk`实例作为一个（未实例化的）模块，然后`app`创建了自己的私有实例，该实例与其私有`$Main`模块实例链接。因此，这三个组件共享`libc`*代码*，而不共享`libc`*状态*，实现了开始的实例图。
 
+## 循环依赖
 
-## Cyclic Dependencies
+如果需要循环依赖，则可以通过以下方式打破这些循环：
+* 在模块依赖图上识别一个[跨度]DAG；
+* 将跨度DAG的边缘上的调用保留为正常的函数导入和直接调用（如上所示）；
+* 然后将“反向边”上的调用转换为导入的间接调用（`call_indirect`），该导入包含函数表中的索引（`global i32`）。
 
-If cyclic dependencies are necessary, such cycles can be broken by:
-* identifying a [spanning] DAG over the module dependency graph;
-* keeping the calls along the spanning DAG's edges as normal function imports
-  and direct calls (as shown above); then
-* converting calls along "back edges" into indirect calls (`call_indirect`) of
-  an imported `(global i32)` containing the index in the function table.
+例如，模块`$A`和`$B`之间的循环可以通过任意地说`$B`可以直接导入`$A`，然后通过共享的可变`funcref`表通过`call_indirect`路由`$A`的导入来打破。
 
-For example, a cycle between modules `$A` and `$B` could be broken by arbitrarily
-saying that `$B` gets to directly import `$A` and then routing `$A`'s imports
-through a shared mutable `funcref` table via `call_indirect`:
 ```wat
 (module $A
-  ;; A imports B.bar indirectly via table+index
+  ;; A通过table+index间接导入B.bar
   (import "linkage" "table" (table funcref))
   (import "linkage" "bar-index" (global $bar-index (mut i32)))
 
@@ -333,7 +286,7 @@ through a shared mutable `funcref` table via `call_indirect`:
     (call_indirect $FooType (global.get $bar-index))
   )
 
-  ;; A exports A.foo directly to B
+  ;; A直接将A.foo导出到B
   (func (export "foo")
     ...
   )
@@ -341,10 +294,10 @@ through a shared mutable `funcref` table via `call_indirect`:
 ```
 ```wat
 (module $B
-  ;; B directly imports A.foo
-  (import "a" "foo" (func $a_foo))  ;; B gets to directly import A
+  ;; B直接导入A.foo
+  (import "a" "foo" (func $a_foo)) ;; B可以直接导入A
 
-  ;; B indirectly exports B.bar to A
+  ;; B间接地将B.bar导出到A
   (func $bar ...)
   (import "linkage" "table" (table $ftbl funcref))
   (import "linkage" "bar-index" (global $bar-index (mut i32)))
@@ -353,9 +306,7 @@ through a shared mutable `funcref` table via `call_indirect`:
   (start $start)
 )
 ```
-Lastly, a toolchain can link these together into a whole program by emitting
-a wrapper adapter module that supplies both `$A` and `$B` with a shared
-function table and `bar-index` mutable global.
+最后，工具链可以通过发出一个包含共享函数表和“bar-index”可变全局变量的包装适配器模块来将它们链接成一个完整的程序。
 ```wat
 (component
   (import "A" (core module $A ...))
@@ -376,49 +327,29 @@ function table and `bar-index` mutable global.
 ```
 
 
-## Function Pointer Identity
+## 函数指针标识
 
-To ensure C function pointer identity across shared libraries, for each exported
-function, a shared library will need to export both the `func` definition and a
-`(global (mut i32))` containing that `func`'s index in the global `funcref` table.
+为了确保在共享库中跨C函数指针标识，对于每个导出的函数，共享库都需要导出`func`定义和包含该`func`在全局`funcref`表中的索引的`(global (mut i32))`。
 
-Because a shared library can't know the absolute offset in the global `funcref`
-table for all of its exported functions, the table slots' offsets must be
-dynamic. One way this could be achieved is by the shared library calling into a
-`ftalloc` export of `libc` (analogous to `malloc`, but for allocating from the
-global `funcref` table) from the shared library's `start` function. Elements could
-then be written into the table at the allocated offset and their indices
-written into the exported `(global (mut i32))`s.
+因为共享库无法知道其导出函数在全局`funcref`表中的绝对偏移量，所以表格插槽的偏移量必须是动态的。一种实现这一点的方法是，共享库从共享库的`start`函数中调用`libc`的`ftalloc`导出（类似于`malloc`，但用于从全局`funcref`表中分配），然后可以将元素写入分配的偏移量中，并将它们的索引写入导出的`(global (mut i32))`中。
 
-(In theory, more efficient schemes are possible when the main program has more
-static knowledge of its shared libraries.)
+（理论上，当主程序对其共享库具有更多静态知识时，可能存在更有效的方案。）
 
 
-## Linear-memory stack pointer
+## 线性内存堆栈指针
 
-To implement address-taken local variables, varargs, and other corner cases,
-wasm compilers maintain a stack in linear memory that is maintained in
-lock-step with the native WebAssembly stack. The pointer to the top of the
-linear-memory stack is usually maintained in a single `(global (mut i32))`
-variable that must be shared by all linked instances. Following the above
-linking scheme, this global would naturally be exported by `libc` along
-with linear memory.
+为了实现地址获取的局部变量，变长参数和其他边角情况，wasm编译器在线性内存中维护一个堆栈，该堆栈与本机WebAssembly堆栈保持同步。线性内存堆栈的顶部指针通常在单个`(global (mut i32))`变量中维护，该变量必须由所有链接的实例共享。按照上述链接方案，此全局变量自然将与线性内存一起由`libc`导出。
 
+## 运行时动态链接
 
-## Runtime Dynamic Linking
+在运行时动态链接的一般情况下，类似于`dlopen`的风格，其中一个*先验未知*模块在运行时链接到程序中是不可能纯粹在wasm中实现的，需要额外提供主机API，包括：
+*将文件或字节编译为模块；
+*读取模块的导入字符串；
+*给定导入值列表动态实例化模块；以及
+*动态提取实例的导出。
 
-The general case of runtime dynamic linking in the style of `dlopen`, where an
-*a priori unknown* module is linked into the program at runtime, is not possible
-to do purely within wasm with this proposal. Additional host-provided APIs are
-required for:
-* compiling files or bytes into a module;
-* reading the import strings of a module;
-* dynamically instantiating a module given a list of import values; and
-* dynamically extracting the exports of an instance.
+这些API可以作为[WASI]的一部分进行标准化。此外，[JS API]具有上述所有功能，允许在浏览器中原型化和实现WASI API。
 
-Such APIs could be standardized as part of [WASI]. Moreover, the [JS API]
-possesses all the above capabilities allowing the WASI APIs to be prototyped and
-implemented in the browser.
 
 
 

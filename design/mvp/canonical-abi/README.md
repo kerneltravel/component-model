@@ -1,5 +1,6 @@
-# Canonical ABI Code
+# 规范ABI代码
 
-This directory contains:
-* `definitions.py`: contains the source definitions copied into the [canonical ABI explainer](../CanonicalABI.md)
-* `run_tests.py`: can be run via `python3 run_tests.py` (version >=3.10) to run all the tests
+此目录包含：
+* `definitions.py`：包含复制到[规范ABI说明器](../CanonicalABI.md)中的源定义
+* `run_tests.py`：可以通过`python3 run_tests.py`（版本>=3.10）运行以运行所有测试
+
