@@ -1,21 +1,12 @@
-# Component Model Binary Format Explainer
+# 组件模型二进制格式说明
 
-This document defines the binary format for the AST defined in the
-[explainer](Explainer.md). The top-level production is `component` and the
-convention is that a file suffixed in `.wasm` may contain either a
-[`core:module`] *or* a `component`, using the `layer` field to discriminate
-between the two in the first 8 bytes (see [below](#component-definitions) for
-more details).
+本文档定义了在[说明文档](Explainer.md)中定义的AST的二进制格式。顶级生产是“component”，约定是以“.wasm”为后缀的文件可以包含一个[`core:module`] *或*一个`component`，使用“layer”字段来区分两者的前8个字节（有关更多详细信息，请参见[下面](#组件定义)）。
 
-Note: this document is not meant to completely define the decoding or validation
-rules, but rather merge the minimal need-to-know elements of both, with just
-enough detail to create a prototype. A complete definition of the binary format
-and validation will be present in the [formal specification](../../spec/).
+注意：本文档并不意味着完全定义解码或验证规则，而是合并了两者中最少需要了解的元素，仅提供足够的细节来创建一个原型。二进制格式和验证的完整定义将在[正式规范](../../spec/)中提供。
 
 
-## Component Definitions
-
-(See [Component Definitions](Explainer.md#component-definitions) in the explainer.)
+## 组件定义
+（请参见说明文档中的[组件定义](Explainer.md#component-definitions)。）
 ```
 component ::= <preamble> s*:<section>*            => (component flatten(s*))
 preamble  ::= <magic> <version> <layer>
@@ -35,23 +26,15 @@ section   ::=    section_0(<core:custom>)         => ϵ
             | i*:section_10(vec(<import>))        => i*
             | e*:section_11(vec(<export>))        => e*
 ```
-Notes:
-* Reused Core binary rules: [`core:section`], [`core:custom`], [`core:module`]
-* The `core-prefix(t)` meta-function inserts a `core` token after the leftmost
-  paren of `t` (e.g., `core-prefix( (module (func)) )` is `(core module (func))`).
-* The `version` given above is pre-standard. As the proposal changes before
-  final standardization, `version` will be bumped from `0xa` upwards to
-  coordinate prototypes. When the standard is finalized, `version` will be
-  changed one last time to `0x1`. (This mirrors the path taken for the Core
-  WebAssembly 1.0 spec.)
-* The `layer` field is meant to distinguish modules from components early in
-  the binary format. (Core WebAssembly modules already implicitly have a
-  `layer` field of `0x0` in their 4 byte [`core:version`] field.)
 
+注：
+- 重用了 Core 二进制规则：[`core:section`]、[`core:custom`]、[`core:module`]
+- `core-prefix(t)` 元函数在 `t` 的最左括号后插入 `core` 标记（例如，`core-prefix( (module (func)) )` 是 `(core module (func))`）。
+- 上面给出的 `version` 是预标准版本。如果提案在最终标准化之前更改，则 `version` 将从 `0xa` 上调以协调原型。当标准最终确定时，`version` 将最后一次更改为 `0x1`。（这与 Core WebAssembly 1.0 规范采取的路径相同。）
+- `layer` 字段旨在在二进制格式早期区分模块和组件。（Core WebAssembly 模块的 4 字节 [`core:version`] 字段中已经隐含了 `layer` 字段为 `0x0`。）
 
-## Instance Definitions
-
-(See [Instance Definitions](Explainer.md#instance-definitions) in the explainer.)
+## 实例定义
+（请参见说明文档中的[实例定义](Explainer.md#instance-definitions)。）
 ```
 core:instance       ::= ie:<core:instanceexpr>                             => (instance ie)
 core:instanceexpr   ::= 0x00 m:<moduleidx> arg*:vec(<core:instantiatearg>) => (instantiate m arg*)
@@ -89,61 +72,38 @@ label               ::= w:<word>                                           => w
 word                ::= w:[0x61-0x7a] x*:[0x30-0x39,0x61-0x7a]*            => char(w)char(x)*
                       | W:[0x41-0x5a] X*:[0x30-0x39,0x41-0x5a]*            => char(W)char(X)*
 ```
-Notes:
-* Reused Core binary rules: [`core:name`], (variable-length encoded) [`core:u32`]
-* The `core:sort` values are chosen to match the discriminant opcodes of
-  [`core:importdesc`].
-* `type` is added to `core:sort` in anticipation of the [type-imports] proposal. Until that
-  proposal, core modules won't be able to actually import or export types, however, the
-  `type` sort is allowed as part of outer aliases (below).
-* `module` and `instance` are added to `core:sort` in anticipation of the [module-linking]
-  proposal, which would add these types to Core WebAssembly. Until then, they are useful
-  for aliases (below).
-* Validation of `core:instantiatearg` initially only allows the `instance`
-  sort, but would be extended to accept other sorts as core wasm is extended.
-* Validation of `instantiate` requires that `name` is present in an
-  `externname` of `c` (with a matching type).
-* When validating `instantiate`, after each individual type-import is supplied
-  via `with`, the actual type supplied is immediately substituted for all uses
-  of the import, so that subsequent imports and all exports are now specialized
-  to the actual type.
-* The indices in `sortidx` are validated according to their `sort`'s index
-  spaces, which are built incrementally as each definition is validated.
-* Validation requires that all annotated `name`s only occur on `func` `export`s
-  and that the `r` `label` matches the `name` of a preceding `resource` export.
-* Validation of `[constructor]` names requires that the `func` returns a
-  `(result (own $R))`, where `$R` is the resource labeled `r`.
-* Validation of `[method]` names requires the first parameter of the function
-  to be `(param "self" (borrow $R))`, where `$R` is the resource labeled `r`.
-* Validation of `[method]` and `[static]` names ensures that all field names
-  are disjoint.
+注：
+- 重用了 Core 二进制规则：[`core:name`]、（可变长度编码的）[`core:u32`]
+- `core:sort` 的值被选择为与 [`core:importdesc`] 的操作码鉴别标志匹配。
+- `type` 被添加到 `core:sort` 中，以期望显示 [type-imports] 提案。在该提案之前，核心模块将无法实际导入或导出类型，但 `type` 排序作为外部别名的一部分是被允许的（如下所述）。
+- `module` 和 `instance` 被添加到 `core:sort` 中，以期望显示 [module-linking] 提案，该提案将这些类型添加到 Core WebAssembly。在此之前，它们对于别名是有用的（如下所述）。
+- `core:instantiatearg` 的验证初始只允许 `instance` 排序，但会在扩展核心 wasm 时扩展为接受其他排序。
+- 对于 `instantiate` 的验证要求 `name` 出现在 `c` 的 `externname` 中（与匹配的类型）。
+- 在验证 `instantiate` 之后，每个单独的类型导入使用 `with` 提供后，实际提供的类型立即替换所有导入的使用，以便后续的导入和所有导出现在已针对实际类型进行了特化。
+- `sortidx` 中的索引根据它们的 `sort` 的索引空间进行验证，这些索引空间在验证每个定义时逐步构建。
+- 验证要求所有带注释的 `name` 仅出现在 `func` `export` 中，并且 `r` 的 `label` 与前面的 `resource` 导出的 `name` 匹配。
+- 对于 `[constructor]` 名称的验证要求 `func` 返回 `(result (own $R))`，其中 `$R` 是标记为 `r` 的资源。
+- 对于 `[method]` 和 `[static]` 名称的验证要求函数的第一个参数为 `(param "self" (borrow $R))`，其中 `$R` 是标记为 `r` 的资源，并且要求所有字段名都不交。
 
 
-## Alias Definitions
-
-(See [Alias Definitions](Explainer.md#alias-definitions) in the explainer.)
+## 别名定义
+（请参见说明文档中的[别名定义](Explainer.md#alias-definitions)。）
 ```
 alias       ::= s:<sort> t:<aliastarget>                => (alias t (s))
 aliastarget ::= 0x00 i:<instanceidx> n:<name>           => export i n
               | 0x01 i:<core:instanceidx> n:<core:name> => core export i n
               | 0x02 ct:<u32> idx:<u32>                 => outer ct idx
 ```
-Notes:
-* Reused Core binary rules: (variable-length encoded) [`core:u32`]
-* For `export` aliases, `i` is validated to refer to an instance in the
-  instance index space that exports `n` with the specified `sort`.
-* For `outer` aliases, `ct` is validated to be *less or equal than* the number
-  of enclosing components and `i` is validated to be a valid
-  index in the `sort` index space of the `i`th enclosing component (counting
-  outward, starting with `0` referring to the current component).
-* For `outer` aliases, validation restricts the `sort` to one
-  of `type`, `module` or `component` and additionally requires that the
-  outer-aliased type is not a `resource` type (which is generative).
 
+注：
+- 重用了 Core 二进制规则：（可变长度编码的）[`core:u32`]
+- 对于 `export` 别名，会验证 `i` 是否引用导出具有指定 `sort` 的 `n` 的实例索引空间中的一个实例。
+- 对于 `outer` 别名，会验证 `ct` 是否小于等于封闭组件的数量，并且会验证 `i` 是否是封闭组件的第 `i` 个 `sort` 索引空间中的有效索引（从内向外计数，从 `0` 开始引用当前组件）。
+- 对于 `outer` 别名，验证将 `sort` 限制为 `type`、`module` 或 `component` 的其中一个，并且还要求外部别名的类型不是生成类型（`resource` 类型）。
 
-## Type Definitions
+## 类型定义
+（请参见说明文档中的[类型定义](Explainer.md#type-definitions)。）
 
-(See [Type Definitions](Explainer.md#type-definitions) in the explainer.)
 ```
 core:type        ::= dt:<core:deftype>                  => (type dt)        (GC proposal)
 core:deftype     ::= ft:<core:functype>                 => ft               (WebAssembly 1.0)
@@ -160,17 +120,13 @@ core:aliastarget ::= 0x01 ct:<u32> idx:<u32>            => outer ct idx
 core:importdecl  ::= i:<core:import>                    => i
 core:exportdecl  ::= n:<core:name> d:<core:importdesc>  => (export n d)
 ```
-Notes:
-* Reused Core binary rules: [`core:import`], [`core:importdesc`], [`core:functype`]
-* Validation of `core:moduledecl` (currently) rejects `core:moduletype` definitions
-  inside `type` declarators (i.e., nested core module types).
-* As described in the explainer, each module type is validated with an
-  initially-empty type index space.
-* `alias` declarators currently only allow `outer` `type` aliases but
-  would add `export` aliases when core wasm adds type exports.
-* Validation of `outer` aliases cannot see beyond the enclosing core type index
-  space. Since core modules and core module types cannot nest in the MVP, this
-  means that the maximum `ct` in an MVP `alias` declarator is `1`.
+
+注：
+- 重用了 Core 二进制规则：[`core:import`]、[`core:importdesc`]、[`core:functype`]
+- `core:moduledecl` 的验证（当前）拒绝在 `type` 声明符（即嵌套的核心模块类型）中定义 `core:moduletype`。
+- 如说明所述，每个模块类型都使用最初为空的类型索引空间进行验证。
+- `alias` 声明符目前仅允许 `outer` `type` 别名，但在核心 wasm 添加类型导出时会添加 `export` 别名。
+- `outer` 别名的验证无法查看超出封闭核心类型索引空间之外的内容。由于 MVP 中不能嵌套核心模块和核心模块类型，这意味着 MVP 中 `alias` 声明符中的最大 `ct` 为 `1`。
 
 ```
 type          ::= dt:<deftype>                            => (type dt)
@@ -233,48 +189,24 @@ externdesc    ::= 0x00 0x11 i:<core:typeidx>              => (core module (type 
 typebound     ::= 0x00 i:<typeidx>                        => (eq i)
                 | 0x01                                    => (sub resource)
 ```
-Notes:
-* The type opcodes follow the same negative-SLEB128 scheme as Core WebAssembly,
-  with type opcodes starting at SLEB128(-1) (`0x7f`) and going down,
-  reserving the nonnegative SLEB128s for type indices.
-* Validation of `valtype` requires the `typeidx` to refer to a `defvaltype`.
-* Validation of `own` and `borrow` requires the `typeidx` to refer to a
-  resource type.
-* Validation only allows `borrow` to be used inside the `param` of a `functype`.
-  (This is likely to change in a future PR, converting `functype` into a
-  compound type constructor analogous to `moduletype` and `componenttype` and
-  using scoping to enforce this constraint instead.)
-* Validation of `resourcetype` requires the destructor (if present) to have
-  type `[i32] -> []`.
-* Validation of `instancedecl` (currently) only allows the `type` and
-  `instance` sorts in `alias` declarators.
-* As described in the explainer, each component and instance type is validated
-  with an initially-empty type index space. Outer aliases can be used to pull
-  in type definitions from containing components.
-* `exportdecl` introduces a new type index that can be used by subsequent type
-  definitions. In the `(eq i)` case, the new type index is effectively an alias
-  to type `i`. In the `(sub resource)` case, the new type index refers to a
-  *fresh* abstract type unequal to every existing type in all existing type
-  index spaces. (Note: *subsequent* aliases can introduce new type indices
-  equivalent to this fresh type.)
-* Validation rejects `resourcetype` type definitions inside `componenttype` and
-  `instancettype`. Thus, handle types inside a `componenttype` can only refer
-  to resource types that are imported or exported.
-* The uniqueness validation rules for `externname` described below are also
-  applied at the instance- and component-type level.
-* Validation of `externdesc` requires the various `typeidx` type constructors
-  to match the preceding `sort`.
-* Validation of function parameter and result names, record field names,
-  variant case names, flag names, and enum case names requires that the name be
-  unique for the func, record, variant, flags, or enum type definition.
-* Validation of the optional `refines` clause of a variant case requires that
-  the case index is less than the current case's index (and therefore
-  cases are acyclic).
 
+注：
+- 类型操作码遵循与 Core WebAssembly 相同的负 SLEB128 方案，其中类型操作码从 SLEB128(-1) (`0x7f`) 开始向下，将非负 SLEB128 预留给类型索引。
+- 对 `valtype` 的验证要求 `typeidx` 引用 `defvaltype`。
+- 对 `own` 和 `borrow` 的验证要求 `typeidx` 引用资源类型。
+- 验证仅允许在 `functype` 的 `param` 中使用 `borrow`。（这很可能在未来的 PR 中发生变化，将 `functype` 转换为类似于 `moduletype` 和 `componenttype` 的复合类型构造函数，并使用作用域来强制执行此约束。）
+- 对 `resourcetype` 的验证要求析构函数（如果存在）具有类型 `[i32] -> []`。
+- 对 `instancedecl` 的验证（当前）仅允许在 `alias` 声明符中使用 `type` 和 `instance` 类型。
+- 如说明所述，每个组件和实例类型都使用最初为空的类型索引空间进行验证。外部别名可用于从包含组件中提取类型定义。
+- `exportdecl` 引入一个新的类型索引，可以由后续类型定义使用。在 `(eq i)` 的情况下，新类型索引实际上是类型 `i` 的别名。在 `(sub resource)` 的情况下，新类型索引引用一个与所有现有类型索引空间中的每个现有类型都不相等的*新*抽象类型。（注意：*后续*别名可以引入等效于此新类型的新类型索引。）
+- 验证拒绝在 `componenttype` 和 `instancettype` 中定义 `resourcetype` 类型。因此，在 `componenttype` 中的句柄类型只能引用被导入或导出的资源类型。
+- 下面描述的 `externname` 的唯一性验证规则也适用于实例和组件类型级别。
+- 对 `externdesc` 的验证要求各种 `typeidx` 类型构造函数与前面的 `sort` 匹配。
+- 对函数参数和结果名称、记录字段名称、变体情况名称、标志名称和枚举情况名称的验证要求该名称对于函数、记录、变体、标志或枚举类型定义是唯一的。
+- 对变体情况的可选 `refines` 子句的验证要求情况索引小于当前情况的索引（因此情况是无环的）。
 
-## Canonical Definitions
-
-(See [Canonical Definitions](Explainer.md#canonical-definitions) in the explainer.)
+## 经典定义
+（请参见说明文档中的[规范定义](Explainer.md#canonical-definitions)。）
 ```
 canon    ::= 0x00 0x00 f:<core:funcidx> opts:<opts> ft:<typeidx> => (canon lift f opts type-index-space[ft])
            | 0x01 0x00 f:<funcidx> opts:<opts>                   => (canon lower f opts (core func))
@@ -289,40 +221,25 @@ canonopt ::= 0x00                                                => string-encod
            | 0x04 f:<core:funcidx>                               => (realloc f)
            | 0x05 f:<core:funcidx>                               => (post-return f)
 ```
-Notes:
-* The second `0x00` byte in `canon` stands for the `func` sort and thus the
-  `0x00 <u32>` pair standards for a `func` `sortidx` or `core:sortidx`.
-* Validation prevents duplicate or conflicting `canonopt`.
-* Validation of the individual canonical definitions is described in
-  [`CanonicalABI.md`](CanonicalABI.md#canonical-definitions).
+注：
+- `canon` 中的第二个 `0x00` 字节代表 `func` 类型，因此 `0x00 <u32>` 对应于 `func` 类型的 `sortidx` 或 `core:sortidx`。
+- 验证防止重复或冲突的 `canonopt`。
+- 对各个规范定义的验证在 [`CanonicalABI.md`](CanonicalABI.md#canonical-definitions) 中有描述。
 
-
-## Start Definitions
-
-(See [Start Definitions](Explainer.md#start-definitions) in the explainer.)
+## 启动定义
+（请参见说明文档中的[启动定义](Explainer.md#start-definitions)。）
 ```
 start ::= f:<funcidx> arg*:vec(<valueidx>) r:<u32> => (start f (value arg)* (result (value))ʳ)
 ```
-Notes:
-* Validation requires `f` have `functype` with `param` arity and types matching `arg*`
-  and `result` arity `r`.
-* Validation appends the `result` types of `f` to the value index space (making
-  them available for reference by subsequent definitions).
+注：
+- 验证要求 `f` 具有 `functype`，其 `param` 个数和类型与 `arg*` 匹配，并且 `result` 的个数为 `r`。
+- 验证将 `f` 的 `result` 类型附加到值索引空间中（使它们可供后续定义引用）。
 
-In addition to the type-compatibility checks mentioned above, the validation
-rules for value definitions additionally require that each value is consumed
-exactly once. Thus, during validation, each value has an associated "consumed"
-boolean flag. When a value is first added to the value index space (via
-`import`, `instance`, `alias` or `start`), the flag is clear. When a value is
-used (via `export`, `instantiate` or `start`), the flag is set. After
-validating the last definition of a component, validation requires all values'
-flags are set.
+除了上面提到的类型兼容性检查之外，值定义的验证规则还要求每个值恰好被使用一次。因此，在验证期间，每个值都有一个相关联的“已消耗”布尔标志。当一个值第一次添加到值索引空间中（通过 `import`、`instance`、`alias` 或 `start`）时，标志是未设置的。当一个值被使用时（通过 `export`、`instantiate` 或 `start`），标志被设置。在验证组件的最后一个定义之后，验证要求设置所有值的标志。
 
 
-## Import and Export Definitions
-
-(See [Import and Export Definitions](Explainer.md#import-and-export-definitions)
-in the explainer.)
+## 引入和导出定义
+（请参见说明文档中的[导入和导出定义](Explainer.md#import-and-export-definitions)。）
 ```
 import      ::= en:<externname> ed:<externdesc>                => (import en ed)
 export      ::= en:<externname> si:<sortidx> ed?:<externdesc>? => (export en si ed?)
@@ -331,35 +248,17 @@ externattrs ::= 0x00                                           => ϵ
               | 0x01 url:<URL>                                 => (id url)
 URL         ::= b*:vec(byte)                                   => char(b)*, if char(b)* parses as a URL
 ```
-Notes:
-* All exports (of all `sort`s) introduce a new index that aliases the exported
-  definition and can be used by all subsequent definitions just like an alias.
-* Validation requires that all resource types transitively used in the type of an
-  export are introduced by a preceding `importdecl` or `exportdecl`.
-* The "parses as a URL" condition is defined by executing the [basic URL
-  parser] with `char(b)*` as *input*, no optional parameters and non-fatal
-  validation errors (which coincides with definition of `URL` in JS and `rust-url`).
-* Validation requires any exported `sortidx` to have a valid `externdesc`
-  (which disallows core sorts other than `core module`). When the optional
-  `externdesc` immediate is present, validation requires it to be a supertype
-  of the inferred `externdesc` of the `sortidx`.
-* The `name` fields of `externname` must be unique among all imports and exports
-  in the containing component definition, component type or instance type. (An
-  import and export cannot use the same `name`.)
-* The `id` fields of `externname` (that are present) must independently be
-  unique among imports and exports, respectively. (An import and export *may*
-  have the same `id`.)
-* URLs are compared for equality by plain byte identity.
+注：
+- 所有导出（所有 `sort` 的导出）都引入一个新的索引，该索引别名导出定义，并可以像别名一样由所有后续定义使用。
+- 验证要求在导出类型的类型中传递使用的所有资源类型都是通过先前的 `importdecl` 或 `exportdecl` 引入的。
+- “解析为 URL” 条件是通过使用 `char(b)*` 作为*输入*，没有可选参数和非致命验证错误（这与 JS 和 `rust-url` 中 `URL` 的定义重合）执行 [基本 URL 解析器] 来定义的。
+- 验证要求任何导出的 `sortidx` 都具有有效的 `externdesc`（这不允许除 `core module` 之外的其他核心类型）。当存在可选的 `externdesc` 立即数时，验证要求它是 `sortidx` 推断的 `externdesc` 的超类型。
+- `externname` 的 `name` 字段必须在包含组件定义、组件类型或实例类型的所有导入和导出中唯一。 （导入和导出不能使用相同的 `name`。）
+- `externname` 的 `id` 字段（如果存在）必须分别在导入和导出中独立唯一。 （导入和导出*可能*具有相同的 `id`。）
+- URL 的相等性是通过纯字节标识进行比较的。
 
-## Name Section
-
-Like the core wasm [name
-section](https://webassembly.github.io/spec/core/appendix/custom.html#name-section)
-a similar `name` custom section is specified here for components to be able to
-name all the declarations that can happen within a component. Similarly like its
-core wasm counterpart validity of this custom section is not required and
-engines should not reject components which have an invalid `name` section.
-
+## 名称部分
+与核心 wasm 的 [名字段](https://webassembly.github.io/spec/core/appendix/custom.html#name-section) 类似，这里为组件指定了一个类似的 `name` 自定义段，以便能够为组件内可能发生的所有声明进行命名。类似于其核心 wasm 对应部分，此自定义段的有效性并非必需，并且引擎不应拒绝具有无效 `name` 段的组件。
 ```
 namesec    ::= section_0(namedata)
 namedata   ::= n:<name>                (if n = 'component-name')
@@ -374,10 +273,7 @@ sortnames ::= sort:<sort> names:<namemap>
 namemap ::= names:vec(<nameassoc>)
 nameassoc ::= idx:<u32> name:<name>
 ```
-
-where `namemap` is the same as for core wasm. A particular `sort` should only
-appear once within a `name` section, for example component instances can only be
-named once.
+这里的 `namemap` 与核心 wasm 中的相同。特定的 `sort` 应该仅在 `name` 段中出现一次，例如组件实例只能命名一次。
 
 
 [`core:u32`]: https://webassembly.github.io/spec/core/binary/values.html#integers
