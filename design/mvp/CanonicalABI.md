@@ -1,74 +1,39 @@
-# Canonical ABI Explainer
+# 规范化ABI解释器
 
-This document defines the Canonical ABI used to convert between the values and
-functions of components in the Component Model and the values and functions
-of modules in Core WebAssembly.
+本文档定义了用于在组件模型和核心WebAssembly模块之间转换组件的值和函数以及模块的值和函数的规范ABI。
 
-* [Supporting definitions](#supporting-definitions)
-  * [Despecialization](#Despecialization)
-  * [Alignment](#alignment)
-  * [Size](#size)
-  * [Loading](#loading)
-  * [Storing](#storing)
-  * [Flattening](#flattening)
-  * [Flat Lifting](#flat-lifting)
-  * [Flat Lowering](#flat-lowering)
-  * [Lifting and Lowering Values](#lifting-and-lowering-values)
-  * [Lifting and Lowering Functions](#lifting-and-lowering-functions)
-* [Canonical definitions](#canonical-definitions)
+* [支持定义](#支持定义)
+  * [去专业化](#去专业化)
+  * [对齐](#对齐)
+  * [大小](#大小)
+  * [加载](#加载)
+  * [存储](#存储)
+  * [展平](#展平)
+  * [平面提升](#平面提升)
+  * [平面降低](#平面降低)
+  * [提升和降低值](#提升和降低值)
+  * [提升和降低函数](#提升和降低函数)
+* [规范定义](#规范定义)
   * [`canon lift`](#canon-lift)
   * [`canon lower`](#canon-lower)
   * [`canon resource.new`](#canon-resourcenew)
   * [`canon resource.drop`](#canon-resourcedrop)
   * [`canon resource.rep`](#canon-resourcerep)
 
+## 支持定义
 
-## Supporting definitions
+规范ABI指定了每个组件函数签名的相应核心函数签名以及将组件级别的值读入和写入线性内存的过程。虽然一个完整的正式说明会将规范ABI扩展为一整套Core WebAssembly指令的形式，但这里的非正式描述则将这个过程转化为Python代码，以供组件模型在验证和运行时执行相关逻辑。代码将定义和描述混合在一起，并省略了一些样板文件。要查看所有Python定义的完整列表，包括单个可执行文件和一套小型单元测试，请参见[`canonical-abi`](canonical-abi/)目录。
 
-The Canonical ABI specifies, for each component function signature, a
-corresponding core function signature and the process for reading
-component-level values into and out of linear memory. While a full formal
-specification would specify the Canonical ABI in terms of macro-expansion into
-Core WebAssembly instructions augmented with a new set of (spec-internal)
-[administrative instructions], the informal presentation here instead specifies
-the process in terms of Python code that would be logically executed at
-validation- and run-time by a component model implementation. The Python code
-is presented by interleaving definitions with descriptions and eliding some
-boilerplate. For a complete listing of all Python definitions in a single
-executable file with a small unit test suite, see the
-[`canonical-abi`](canonical-abi/) directory.
+以下是Python代码惯例：所有陷阱都会明确调用`trap()`/`trap_if()` 来引发; Python `assert()`语句不应该触发，只是用于给读者提供一些提示。同样，不应该有未捕获的Python异常。
 
-The convention followed by the Python code below is that all traps are raised
-by explicit `trap()`/`trap_if()` calls; Python `assert()` statements should
-never fire and are only included as hints to the reader. Similarly, there
-should be no uncaught Python exceptions.
+虽然Python代码似乎在将线性内存的内容提取成高级别Python值时执行了一个副本，但正常的实现不需要进行这个额外的中间复制。更多内容请查看下面的“#调用组件的方式”。
 
-While the Python code appears to perform a copy as part of lifting
-the contents of linear memory into high-level Python values, a normal
-implementation should never need to make this extra intermediate copy.
-This claim is expanded upon [below](#calling-into-a-component).
+最后，独立于Python，以下定义的规范ABI假定内存不足条件（例如，在`realloc`的内部，`memory.grow`返回`-1`）会通过`unreachable`来引发陷阱。通过避免必须支持嵌套分配中间的复杂协议，这一简化可以显著简化规范ABI。在MVP版本中，对于可以OOM的大型分配，[streams]通常会是适当的类型，并且streams将能够明确地表达其类型中的失败。MVP后期，[adapter functions]将允 许对所有组件级别类型进行完全定制的OOM处理，允许工具链将OOM有意地传播到函数声明的返回类型的适当明确返回值中。
 
-Lastly, independently of Python, the Canonical ABI defined below assumes that
-out-of-memory conditions (such as `memory.grow` returning `-1` from within
-`realloc`) will trap (via `unreachable`). This significantly simplifies the
-Canonical ABI by avoiding the need to support the complicated protocols
-necessary to support recovery in the middle of nested allocations. In the MVP,
-for large allocations that can OOM, [streams](Explainer.md#TODO) would usually
-be the appropriate type to use and streams will be able to explicitly express
-failure in their type. Post-MVP, [adapter functions] would allow fully custom
-OOM handling for all component-level types, allowing a toolchain to
-intentionally propagate OOM into the appropriate explicit return value of the
-function's declared return type.
+### 去专业化
 
+在[解释器][类型定义]中，组件值类型被分类为“基本类型”或“专业类型”，后者是通过展开为基本值类型来定义的。在大多数情况下，专业化值类型的规范ABI与其展开相同，为避免重复，以下其他定义使用以下`despecialize`函数将专业化值类型替换为其展开：
 
-### Despecialization
-
-[In the explainer][Type Definitions], component value types are classified as
-either *fundamental* or *specialized*, where the specialized value types are
-defined by expansion into fundamental value types. In most cases, the canonical
-ABI of a specialized value type is the same as its expansion so, to avoid
-repetition, the other definitions below use the following `despecialize`
-function to replace specialized value types with their expansion:
 ```python
 def despecialize(t):
   match t:
@@ -79,16 +44,12 @@ def despecialize(t):
     case Result(ok, error) : return Variant([ Case("ok", ok), Case("error", error) ])
     case _                 : return t
 ```
-The specialized value types `string` and `flags` are missing from this list
-because they are given specialized canonical ABI representations distinct from
-their respective expansions.
+由于这个函数，专业化的值类型`string`和`flags`会被忽略，因为它们具有与它们各自的展开不同的专业规范ABI表示。
 
+### 对齐
 
-### Alignment
-
-Each value type is assigned an [alignment] which is used by subsequent
-Canonical ABI definitions. Presenting the definition of `alignment` piecewise,
-we start with the top-level case analysis:
+每个值类型都被分配了一个 [对齐] 值，并在接下来的规范ABI定义中使用。
+`alignment`的分段定义，我们从顶层情况分析开始：
 ```python
 def alignment(t):
   match despecialize(t):
@@ -107,7 +68,7 @@ def alignment(t):
     case Own(_) | Borrow(_) : return 4
 ```
 
-Record alignment is tuple alignment, with the definitions split for reuse below:
+记录对齐采用元组对齐，并将其定义拆分以便在下面实现重用：
 ```python
 def alignment_record(fields):
   a = 1
@@ -116,11 +77,7 @@ def alignment_record(fields):
   return a
 ```
 
-As an optimization, `variant` discriminants are represented by the smallest integer
-covering the number of cases in the variant (with cases numbered in order from
-`0` to `len(cases)-1`). Depending on the payload type, this can allow more
-compact representations of variants in memory. This smallest integer type is
-selected by the following function, used above and below:
+作为一种优化，`variant`辨别符是由覆盖变体中案例数量的最小整数表示的（以顺序从0到 `len（cases）-1`编号）。根据载荷类型，这可以允许更紧凑的变体在内存中表示。通过以下函数选择此最小整数类型，以上述函数为上下文：
 ```python
 def alignment_variant(cases):
   return max(alignment(discriminant_type(cases)), max_case_alignment(cases))
@@ -142,9 +99,7 @@ def max_case_alignment(cases):
   return a
 ```
 
-As an optimization, `flags` are represented as packed bit-vectors. Like variant
-discriminants, `flags` use the smallest integer that fits all the bits, falling
-back to sequences of `i32`s when there are more than 32 flags.
+作为一种优化，`flags`被表示为打包的位向量。与变量辨别符相似，`flags`使用适合所有位的最小整数，当有超过32个标志时则回退为`i32`序列。
 ```python
 def alignment_flags(labels):
   n = len(labels)
@@ -153,14 +108,11 @@ def alignment_flags(labels):
   return 4
 ```
 
-Handle types are passed as `i32` indices into the `HandleTable` introduced
-below.
+处理类型以 `i32` 索引传递到下面引入的 `HandleTable` 中。
 
+### 大小
 
-### Size
-
-Each value type is also assigned a `size`, measured in bytes, which corresponds
-the `sizeof` operator in C:
+每个值类型都被分配了一个 `size` 值，按字节测量，它对应于C中：
 ```python
 def size(t):
   match despecialize(t):
@@ -208,12 +160,10 @@ def size_flags(labels):
 def num_i32_flags(labels):
   return math.ceil(len(labels) / 32)
 ```
+### 上下文
 
-### Context
+从线性存储器加载和存储值的后续定义需要附加上下文信息，这个信息通过 `cx` 参数在大部分后续定义中传递：
 
-The subsequent definitions of loading and storing a value from linear memory
-require additional context, which is threaded through most subsequent
-definitions via the `cx` parameter:
 ```python
 class Context:
   opts: CanonicalOptions
@@ -226,8 +176,8 @@ class Context:
     self.borrow_scope = BorrowScope()
 ```
 
-The `opts` field represents the [`canonopt`] values supplied to
-currently-executing `canon lift` or `canon lower`:
+`opts` 字段表示 `canonopt` 值，其由当前执行的 `canon lift` 或 `canon lower` 提供：
+
 ```python
 class CanonicalOptions:
   memory: bytearray
@@ -236,12 +186,8 @@ class CanonicalOptions:
   post_return: Callable[[],None]
 ```
 
-The `inst` field represents the component instance that the currently-executing
-canonical definition is defined to execute inside. The `may_enter` and
-`may_leave` fields are used to enforce the [component invariants]: `may_leave`
-indicates whether the instance may call out to an import and the `may_enter`
-state indicates whether the instance may be called from the outside world
-through an export. The `HandleTable` is defined next.
+`inst` 字段表示当前执行的规范化定义所定义的组件实例。`may_enter` 和 `may_leave` 字段用于强制实施[组件不变式]：`may_leave` 表示实例是否可以调用导入，而 `may_enter` 状态表示实例是否可以通过导出从外部世界被调用。接下来定义了 `HandleTable`。
+
 ```python
 class ComponentInstance:
   may_leave: bool
@@ -254,12 +200,10 @@ class ComponentInstance:
     self.handles = HandleTable()
 ```
 
-The `HandleTable` class is defined in terms of a collection of supporting
-runtime bookkeeping classes that we'll go through first.
+`HandleTable` 类是由一组支持运行时维护类定义的，下面我们将逐一介绍这些类。
 
-The `Resource` class represents a runtime instance of a resource type, storing
-the core representation value (which is currently fixed to `i32`) and the
-component instance that is implementing this resource.
+`Resource` 类表示资源类型的运行时实例，存储核心表示值（当前固定为 `i32`）和实现此资源的组件实例。
+
 ```python
 @dataclass
 class Resource:
@@ -267,8 +211,8 @@ class Resource:
   impl: ComponentInstance
 ```
 
-The `OwnHandle` and `BorrowHandle` classes represent runtime handle values of
-`own` and `borrow` type, resp:
+`OwnHandle` 和 `BorrowHandle` 类分别表示 `own` 和 `borrow` 类型的运行时句柄值。 
+
 ```python
 @dataclass
 class Handle:
@@ -284,17 +228,11 @@ class OwnHandle(Handle):
 class BorrowHandle(Handle):
   scope: BorrowScope
 ```
-The `resource` field points to the resource instance this handle refers to. The
-`rt` field points to a runtime value representing the static
-[`resourcetype`](Explainer.md#type-definitions) of this handle and is used by
-dynamic type checking below. Lastly, the `lend_count` field maintains a count
-of the outstanding handles that were lent from this handle (by calls to
-`borrow`-taking functions). This count is used below to dynamically enforce the
-invariant that a handle cannot be dropped while it has currently lent out a
-`borrow`.
 
-The `BorrowScope` class represents the scope of a single runtime call of a
-component-level function during which zero or more handles are borrowed.
+`resource` 字段指向该句柄引用的资源实例。`rt` 字段指向表示该句柄的静态 [`resourcetype`](Explainer.md#type-definitions) 的运行时值，用于下面的动态类型检查。最后，`lend_count` 字段维护了从该句柄借出的未解除借用的句柄数量。该计数用于在下面动态强制执行句柄在当前已借出 `borrow` 的情况下不能被删除的不变式。
+
+`BorrowScope` 类表示单个运行时调用期间某个组件级函数的范围，在此期间可以借用零个或多个句柄。
+
 ```python
 class BorrowScope:
   borrow_count: int
@@ -317,16 +255,11 @@ class BorrowScope:
     for h in self.lenders:
       h.lend_count -= 1
 ```
-The `borrow_count` field tracks the number of outstanding `BorrowHandle`s that
-were created when lowering the parameters of the call that have not yet been
-dropped. The `lenders` field maintains a list of source `Handle`s that have
-lent out a `BorrowHandle` and are to be restored when the call finishes and
-`exit` is called. In an optimizing implementation, a `BorrowScope` can be
-stored inline in the stack frame with a layout specialized to the function
-signature, thereby avoiding dynamic allocation of `lenders` in many cases.
 
-Based on these supporting runtime data structures, we can define the
-`HandleTable` in pieces, starting with its fields and the `insert` method:
+`borrow_count` 字段跟踪在调用的参数降级时创建但尚未删除的 `BorrowHandle` 的未解除借用数量。`lenders` 字段维护了已借出 `BorrowHandle` 的源 `Handle` 列表，并在调用结束时调用 `exit` 进行恢复。在优化实现中，可以将 `BorrowScope` 存储在栈帧中的内联布局与函数签名专用的方式一起使用，从而避免在许多情况下对 `lenders` 动态分配内存。
+
+基于这些支持运行时数据结构，我们可以将 `HandleTable` 分成几部分定义，从其字段和 `insert` 方法开始：
+
 ```python
 class HandleTable:
   array: [Optional[Handle]]
@@ -346,16 +279,11 @@ class HandleTable:
       self.array.append(h)
     return i
 ```
-The `HandleTable` class maintains a dense array of handles that can contain
-holes created by the `remove` method (defined below). These holes are kept in a
-separate Python list here, but an optimizing implementation could instead store
-the free list in the free elements of `array`. When inserting a new handle,
-`HandleTable` first consults the `free` list, which is popped LIFO to better
-detect use-after-free bugs in the guest code.
 
-The `get` method is used by other `HandleTable` methods and canonical
-definitions below and uses dynamic guards to catch out-of-bounds and
-use-after-free:
+`HandleTable` 类维护一个包含句柄的稠密数组，在使用 `remove` 方法（下面定义）时可能创建空洞。这些空洞在这里保留在一个单独的 Python 列表中，但是在优化实现中，可以将空洞添加到一个自由列表中，以便更高效地重用。`insert` 方法将给定的 `Handle` 添加到数组中，并返回其索引。
+
+接下来，定义 `remove` 方法：
+
 ```python
   def get(self, i, rt):
     trap_if(i >= len(self.array))
@@ -430,24 +358,23 @@ def load(cx, ptr, t):
     case Borrow(_)      : return lift_borrow(cx, load_int(opts, ptr, 4), t)
 ```
 
-Integers are loaded directly from memory, with their high-order bit interpreted
-according to the signedness of the type.
+整数直接从内存中加载，其高阶位根据类型的符号解释。
+
 ```python
 def load_int(cx, ptr, nbytes, signed = False):
   return int.from_bytes(cx.opts.memory[ptr : ptr+nbytes], 'little', signed=signed)
 ```
 
-Integer-to-boolean conversions treats `0` as `false` and all other bit-patterns
-as `true`:
+将整数转换为布尔值将 `0` 视为 `false`，将所有其他位模式视为 `true`：
+
 ```python
 def convert_int_to_bool(i):
   assert(i >= 0)
   return bool(i)
 ```
 
-For reasons [given](Explainer.md#type-definitions) in the explainer, floats are
-loaded from memory and then "canonicalized", mapping all Not-a-Number bit
-patterns to a single canonical `nan` value.
+出于[类型定义](Explainer.md#type-definitions)中给出的原因，浮点数从内存中加载，然后进行“规范化”，将所有非数字位模式映射到单个规范化的 `nan` 值。
+
 ```python
 def reinterpret_i32_as_float(i):
   return struct.unpack('!f', struct.pack('!I', i))[0] # f32.reinterpret_i32
@@ -469,13 +396,11 @@ def canonicalize64(f):
   return f
 ```
 
-An `i32` is converted to a `char` (a [Unicode Scalar Value]) by dynamically
-testing that its unsigned integral value is in the valid [Unicode Code Point]
-range and not a [Surrogate]:
+通过动态测试无符号整数值是否在有效的[Unicode 代码点](https://en.wikipedia.org/wiki/Unicode#Code_points)范围内，并且不是[代理项](https://en.wikipedia.org/wiki/Unicode#Code_points)。将 `i32` 转换为 `char`（[Unicode 标量值]）：
+
 ```python
 def i32_to_char(cx, i):
-  trap_if(i >= 0x110000)
-  trap_if(0xD800 <= i <= 0xDFFF)
+  assert(0 <= i <= 0x10FFFF and not 0xD800 <= i <= 0xDFFF)
   return chr(i)
 ```
 
@@ -525,7 +450,8 @@ def load_string_from_range(cx, ptr, tagged_code_units):
   return (s, cx.opts.string_encoding, tagged_code_units)
 ```
 
-Lists and records are loaded by recursively loading their elements/fields:
+列表和记录是通过递归加载它们的元素/字段来加载的：
+
 ```python
 def load_list(cx, ptr, elem_type):
   begin = load_int(cx, ptr, 4)
@@ -548,18 +474,11 @@ def load_record(cx, ptr, fields):
     ptr += size(field.t)
   return record
 ```
-As a technical detail: the `align_to` in the loop in `load_record` is
-guaranteed to be a no-op on the first iteration because the record as
-a whole starts out aligned (as asserted at the top of `load`).
 
-Variants are loaded using the order of the cases in the type to determine the
-case index, assigning `0` to the first case, `1` to the next case, etc. To
-support the subtyping allowed by `refines`, a lifted variant value semantically
-includes a full ordered list of its `refines` case labels so that the lowering
-code (defined below) can search this list to find a case label it knows about.
-While the code below appears to perform case-label lookup at runtime, a normal
-implementation can build the appropriate index tables at compile-time so that
-variant-passing is always O(1) and not involving string operations.
+作为技术细节：在`load_record`循环中的`align_to`保证在第一次迭代时为无操作，因为整个记录在开始时按对齐（如`load`顶部断言的那样）。
+
+变体是使用类型中的情况顺序确定情况索引的，将`0`分配给第一个情况，将`1`分配给下一个情况，依此类推。为了支持`refines`允许的子类型，升格变体值在语义上包括其`refines`情况标签的完整有序列表，以便下方定义的低级代码可以搜索此列表以找到它了解的情况标签。虽然下面的代码似乎在运行时执行了情况标签查找，但正常实现可以在编译时构建适当的索引表，使得变体传递始终是O(1)且不涉及字符串操作。
+
 ```python
 def load_variant(cx, ptr, cases):
   disc_size = size(discriminant_type(cases))
@@ -588,9 +507,8 @@ def find_case(label, cases):
   return -1
 ```
 
-Flags are converted from a bit-vector to a dictionary whose keys are
-derived from the ordered labels of the `flags` type. The code here takes
-advantage of Python's support for integers of arbitrary width.
+标志从位向量转换为字典，其键来自`flags`类型的有序标签。此处的代码利用了Python对任意大小的整数的支持。
+
 ```python
 def load_flags(cx, ptr, labels):
   i = load_int(cx, ptr, size_flags(labels))
@@ -650,18 +568,15 @@ def store(cx, v, t, ptr):
     case Borrow(rt)     : store_int(cx, lower_borrow(opts, v, rt), ptr, 4)
 ```
 
-Integers are stored directly into memory. Because the input domain is exactly
-the integers in range for the given type, no extra range checks are necessary;
-the `signed` parameter is only present to ensure that the internal range checks
-of `int.to_bytes` are satisfied.
+整数直接存储到内存中。由于输入空间恰好是给定类型区间内的整数，因此不需要额外的范围检查；`signed`参数只是为了确保`int.to_bytes`的内部范围检查得到满足。
+
 ```python
 def store_int(cx, v, ptr, nbytes, signed = False):
   cx.opts.memory[ptr : ptr+nbytes] = int.to_bytes(v, nbytes, 'little', signed=signed)
 ```
 
-Floats are stored directly into memory (in the case of NaNs, using the
-32-/64-bit canonical NaN bit pattern selected by
-`canonicalize32`/`canonicalize64`):
+浮点数直接存储到内存中（在NaN的情况下，使用`canonicalize32` /`canonicalize64`选定的32-/64位标准NaN位模式）：
+
 ```python
 def reinterpret_float_as_i32(f):
   return struct.unpack('!I', struct.pack('!f', f))[0] # i32.reinterpret_f32
@@ -810,14 +725,8 @@ def store_utf8_to_utf16(cx, src, src_code_units):
   return (ptr, code_units)
 ```
 
-The next transcoding case handles `latin1+utf16` encoding, where there general
-goal is to fit the incoming string into Latin-1 if possible based on the code
-points of the incoming string. The algorithm speculates that all code points
-*do* fit into Latin-1 and then falls back to a worst-case allocation size when
-a code point is found outside Latin-1. In this fallback case, the
-previously-copied Latin-1 bytes are inflated *in place*, inserting a 0 byte
-after every Latin-1 byte (iterating in reverse to avoid clobbering later
-bytes):
+接下来考虑如何处理'latin1+utf16'编码的转换情况。目标是根据传入字符串的代码点将字符串适配到Latin-1编码中。该算法假定所有代码点都适合在Latin-1中，然后在发现一个Latin-1之外的代码点时，回溯到最坏情况分配大小。在这种情况下，之前复制的Latin-1字节在原地扩展，每个Latin-1字节后面插入一个0字节（逆向迭代，以避免破坏后面的字节）：
+
 ```python
 def store_string_to_latin1_or_utf16(cx, src, src_code_units):
   assert(src_code_units <= MAX_STRING_BYTE_LENGTH)
@@ -853,16 +762,8 @@ def store_string_to_latin1_or_utf16(cx, src, src_code_units):
   return (ptr, dst_byte_length)
 ```
 
-The final transcoding case takes advantage of the extra heuristic
-information that the incoming UTF-16 bytes were intentionally chosen over
-Latin-1 by the producer, indicating that they *probably* contain code points
-outside Latin-1 and thus *probably* require inflation. Based on this
-information, the transcoding algorithm pessimistically allocates storage for
-UTF-16, deflating at the end if indeed no non-Latin-1 code points were
-encountered. This Latin-1 deflation ensures that if a group of components
-are all using `latin1+utf16` and *one* component over-uses UTF-16, other
-components can recover the Latin-1 compression. (The Latin-1 check can be
-inexpensively fused with the UTF-16 validate+copy loop.)
+最后考虑利用额外的启发式信息，即生产者有意选择UTF-16字节而非Latin-1，表明它们可能包含Latin-1之外的代码点，因此可能需要扩展。考虑到这种情况，转码算法悲观地为UTF-16分配存储空间，如果确实没有发现非Latin-1代码点，则在最后进行缩小。此时进行Latin-1缩减，可以确保如果一组组件都使用'latin1+utf16'，而一个组件过度使用UTF-16，则其他组件可以恢复Latin-1压缩（Latin-1检查可以廉价地融合到UTF-16验证+复制循环中）：
+
 ```python
 def store_probably_utf16_to_latin1_or_utf16(cx, src, src_code_units):
   src_byte_length = 2 * src_code_units
@@ -1566,24 +1467,24 @@ def canon_resource_drop(inst, t, i):
     trap_if(not h.resource.impl.may_enter)
     t.rt.dtor(h.resource.rep)
 ```
-The `may_enter` guard ensures the non-reentrance [component invariant], since
-a destructor call is analogous to a call to an export.
+
+`may_enter`守卫确保了非再入[组件不变式]，因为析构函数调用类似于对导出的调用。
 
 ### `canon resource.rep`
 
-For a canonical definition:
+对于规范定义：
+
 ```
 (canon resource.rep $t (core func $f))
 ```
-validation specifies:
-* `$t` must refer to a locally-defined (not imported) resource type `$rt`
-* `$f` is given type `(func (param i32) (result $rt.rep))`, where `$rt.rep` is
-  currently fixed to be `i32`.
 
-Calling `$f` invokes the following function, which extracts the core
-representation of the indexed handle after checking that the resource type
-matches. Note that the "locally-defined" requirement above ensures that only
-the component instance defining a resource can access its representation.
+验证指定：
+
+* `$t`必须指向一个本地定义（非导入）的资源类型`$rt`
+* `$f`的给定类型为`(func (param i32) (result $rt.rep))`，其中`$rt.rep`目前固定为`i32`。
+
+调用`$f`会调用以下函数，该函数会在检查资源类型匹配后提取索引句柄的核心表示。请注意，上面的“本地定义”要求确保只有定义资源的组件实例才能访问其表示。
+
 ```python
 def canon_resource_rep(inst, rt, i):
   h = inst.handles.get(i, rt)
@@ -1592,33 +1493,18 @@ def canon_resource_rep(inst, rt, i):
 
 
 
-[Canonical Definitions]: Explainer.md#canonical-definitions
-[`canonopt`]: Explainer.md#canonical-definitions
-[`canon`]: Explainer.md#canonical-definitions
-[Type Definitions]: Explainer.md#type-definitions
-[Component Invariant]: Explainer.md#component-invariants
-[Component Invariants]: Explainer.md#component-invariants
-[JavaScript Embedding]: Explainer.md#JavaScript-embedding
-[Adapter Functions]: FutureFeatures.md#custom-abis-via-adapter-functions
-[Shared-Everything Dynamic Linking]: examples/SharedEverythingDynamicLinking.md
+[规范定义]：explainer.md#规范定义
+[`canonopt`]：explainer.md#规范定义
+[`规范`]：explainer.md#规范定义
+[类型定义]：explainer.md#类型定义
+[组件不变式]：explainer.md#组件不变式
+[组件不变式]：explainer.md#组件不变式
+[JavaScript嵌入]：explainer.md#javascript-嵌入
+[适配器函数]：futurefeatures.md#通过适配器函数自定义ABIs
+[共享一切动态链接]：examples/sharedeverythingdynamiclinking.md
 
-[Administrative Instructions]: https://webassembly.github.io/spec/core/exec/runtime.html#syntax-instr-admin
-[Implementation Limits]: https://webassembly.github.io/spec/core/appendix/implementation.html
-[Function Instance]: https://webassembly.github.io/spec/core/exec/runtime.html#function-instances
-[Two-level]: https://webassembly.github.io/spec/core/syntax/modules.html#syntax-import
+[管理指令]：https://webassembly.github.io/spec/core/exec/runtime.html#syntax-instr-admin
+[实现限制]：https://webassembly.github.io/spec/core/appendix/implementation.html
+[函数实例]：https://webassembly.github.io/spec/core/exec/runtime.html#function-instances
+[两级]：https://webassembly.github.io/spec/core/syntax
 
-[Multi-value]: https://github.com/WebAssembly/multi-value/blob/master/proposals/multi-value/Overview.md
-[Exceptions]: https://github.com/WebAssembly/exception-handling/blob/main/proposals/exception-handling/Exceptions.md
-[WASI]: https://github.com/webassembly/wasi
-
-[Alignment]: https://en.wikipedia.org/wiki/Data_structure_alignment
-[UTF-8]: https://en.wikipedia.org/wiki/UTF-8
-[UTF-16]: https://en.wikipedia.org/wiki/UTF-16
-[Latin-1]: https://en.wikipedia.org/wiki/ISO/IEC_8859-1
-[Unicode Scalar Value]: https://unicode.org/glossary/#unicode_scalar_value
-[Unicode Code Point]: https://unicode.org/glossary/#code_point
-[Surrogate]: https://unicode.org/faq/utf_bom.html#utf16-2
-[Name Mangling]: https://en.wikipedia.org/wiki/Name_mangling
-
-[`import_name`]: https://clang.llvm.org/docs/AttributeReference.html#import-name
-[`export_name`]: https://clang.llvm.org/docs/AttributeReference.html#export-name
